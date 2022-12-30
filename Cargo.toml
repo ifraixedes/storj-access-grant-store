@@ -1,0 +1,14 @@
+[package]
+name = "access-grant-store"
+version = "0.0.1"
+authors = [ "Ivan Fraixedes <ivan@fraixed.es>" ]
+edition = "2021"
+description = "Store Storj Access Grants securely and with associated metadata to easily manage them"
+repository = "https://github.com/ifraixedes/storj-access-grant-store"
+license = "MIT"
+keywords = ["storj", "storjlabs", "decentralized", "access-grant", "store"]
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
