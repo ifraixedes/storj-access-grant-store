@@ -10,7 +10,15 @@ associated values, it also impose rules:
 - Number of blank lines between sections and fields and values of the fields that they are lists is
   fixed.
 
-The file uses the `.ags` extension.
+The file uses the `.ags` extension and they are called AGS files.
+
+The goal of having a strict format is that all the AGS files look equal in terms of syntax. The
+advantages are:
+
+- It helps of not having different ways for specifying the same thing and consequently not having to
+  specify "linters".
+- If they are tracked in a versioning system, the diffs are because of data being updated and not
+  because of format being changed, which makes easier to see the changes.
 
 ## Specification
 
@@ -24,37 +32,36 @@ grant = this is the access grant encrypted
 tags = one, two, three
 description = this is a single line string as a TOML one but withotu requiring quotes
 notes =
-This is a multiline string as a TOML one but it doesn't require quotes.
-The last empty line before "permissions" field is not considered part of the notes.
-
+	This is a multiline string as a TOML one but it doesn't require quotes.
+	TThe last empty line before "permissions" field is not considered part of the notes.
 permissions =
 - bucket-name-1
-	prefix1/: read, write
-	prefix2/:
-	prefix3/: write, read, delete, list
+	prefix1/
+		read, write
+	prefix2/
+		all
+	prefix3/
+		write, read, delete, list
 - bucket-name-2
-	/:
-
+	/
+		all
 metadata =
-- field1: this is the value
-- field 2: Spaces in the field name are valid
-- user\:10: Colons are allowed in the field's name but they have to be scaped with back slash
-- field 3:
-	Multiple lines are OK. The text has to start in the line after the field name and
-	each new line has to be indended by one tab, which are not considered part of the
-	text.
+- field1
+	this is the value
+- field 2
+	Spaces in the field name are valid
+- field 3
+	Multiple lines are OK. Each new line has to be indented by one tab, which are not
+	considered part of the text.
 	The last blank line before the next user's field, field, project or access grant is not
 	considered part of this text.
 
-## root Access Grant name
+## root readonly Access Grant name
 grant = this MUST always have a value, the rest except permissions can be empty.
 tags =
 description =
 notes =
-permissions =
-- *
-	/:
-
+permissions = list, read
 metadata =
 
 ```
@@ -104,8 +111,8 @@ The field MUST not be empty.
 
 A list of tags or empty if none.
 
-A tag can ONLY contain lowercase letters, numbers, underscores (`_`), colons, back and forward
-slashes (`\` and `/`).
+A tag can ONLY contain lowercase letters, numbers, underscores (`_`), dashes (`-`), colons, back and
+forward slashes (`\` and `/`).
 
 Each tag is separated by comma (`,`) and a white space. Comma MUST only be present if there is a
 next tag.
@@ -122,57 +129,47 @@ I accepts any character except any new line control character.
 
 MULTI LINE free text.
 
-Value starts in the next line.
+Value starts in the next line and a tab (`\t`).
 
-It can contain new lines and empty new lines.
-
-It must end with a new empty line, which isn't considered part of the value. If you want to have a
-new empty line at the end of the value, add two.
+It can contain new lines and empty new lines, but all of them must start with a tab. The initial
+tab isn't considered part of the text.
 
 #### permissions
 
-List of permissions.
+Denote the permissions of the access grant for the whole project or for specific buckets and paths.
+Because of the levels of permissions, the syntax differ between both.
 
-Each permission has a specific format and starts in a new line. The list of permissions has to end
-with a new empty line, which marks the separation with the next field.
+When denoting permissions for the whole project, after the equal sign it follows a space and the
+rights (see below what rights are).
 
-A permission has the following format:
+When specifying permissions for buckets and paths, each permission has the following format and
+starts in a new line:
 
-Start with dash (`-`) following ONE white space and a bucket's name. Bucket's name MUST have ONE
-character at least and when it only has one, it MUST NOT be star (`*`), and it cannot contain any
-new line control character.
-
-It follows with a new line and a tab followed by the path prefix and then colon (`:`).
-
-A prefix MUST have at least ONE character. When it has one character and it's the forward slash
+- Start with dash (`-`) following ONE white space and a bucket's name. Bucket's name MUST have ONE
+character at least, and it cannot contain any new line control character.
+- It follows with a new line and a tab followed by the path prefix.
+- A prefix MUST have at least ONE character. When it has one character and it's the forward slash
 (`/`), it represents any prefix.
+- The path's rights are specified in the following line preceded by two consecutive tabs.
 
-Paths can contain colons, the last colon in the line marks the end of the prefix and the separation
-with the permissions for the prefix.
-
-The permissions of a prefix is empty or a set (so, cannot contain each one more than once) formed by
-at least one of the following words (in any specific order): `delete`, `list`, `read`, `write`.
-Empty value means all the permissions.
+Rights are at least one of the following words: `all`, `delete`, `list`, `read`, `write`. Words can
+be combined except the `all` one, which can be only set alone. When combined they must follow the
+alphabetical order and separating the following one from the previous by a command and white space
+(`, `).
 
 #### metadata
 
 List of user's metadata fields. It can be empty.
 
-Each metadata field has a specific format and starts in a new line. The list of fields has to end
-with a new empty line, which marks the separation with the next _[access grant](#access-grant)_ or
-_[project](#projects)_ or a new field added in the future.
+Each metadata field has a specific format and starts in a new line.
 
 Each field starts with dash (`-`) following ONE white space following the field's name. Field's name
 can contain any character except any new line control character and it MUST be at least one
-character long.
+character long and ends with a new line.
 
-Field's name follows a colon (`:`); if the field's name contains colons, the last
-colon is considered the one that separates it from the field's value.
+Every field must have a value.
 
-Fields value can contain any character. If it's a single line value it has to be next to the field's
-name with a white space between the colon and the beginning of the value, in this case, it cannot
-contains any new line control character.
-
-Field values with new lines are accepted, but the field's name separator (`:`) follows with a new
-line and a tab. Each new line part of the value must start with a tab. The first tab, is not
-considered part of the value.
+A field's value is preceded by a tab followed by at lease one character. They can contain any
+character. When they contain new lines, each new line start with a tab. The preceding first tab on
+each line is not considered part of the value and the last new line character isn't considered part
+of the field's value.
