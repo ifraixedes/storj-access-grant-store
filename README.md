@@ -17,7 +17,7 @@ NOTE that there isn't any commitment on this roadmap.
 ### v1
 
 - [X] Define text file format. Extension is `.ags` (Access Grant Store).
-- [ ] Implement parser.
+- [X] Implement parser.
 - [ ] Implement API for reading the file.
 - [ ] Implement API for writing the file.
 - [ ] Define encryption for access grants values based on password.

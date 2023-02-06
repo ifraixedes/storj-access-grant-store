@@ -1,14 +1,15 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! # Access Grant Store
+//!
+//! Library for storing
+//! [Storj Access Grants](https://docs.storj.io/dcs/concepts/access/access-grants/) in a text file
+//! with some specific format, offering the following capabilities:
+//!
+//! - Store user's metadata associated to them for facilitating the management.
+//! - Add / Read / Update / Delete  an access grant.
+//! - Search them by tags and/or fields defined by the user.
+//!
+//! The access grant is encrypted before storing it in the file.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#![deny(missing_docs)]
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+mod parser;

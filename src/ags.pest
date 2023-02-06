@@ -1,0 +1,90 @@
+text_oneline = { (!NEWLINE ~ ANY)+ }
+text_multiline = { ANY+ }
+
+project = {
+  "# " ~ text_oneline ~ NEWLINE{2} ~
+  access_grant+
+}
+
+access_grant = {
+  "## " ~ text_oneline ~ NEWLINE ~
+  grant ~ NEWLINE ~
+  tags ~ NEWLINE ~
+  description ~ NEWLINE ~
+  notes ~ NEWLINE ~
+  permissions ~ NEWLINE ~
+  metadata ~ NEWLINE
+}
+
+grant = { "grant = " ~ text_oneline }
+tags = {
+  "tags =" ~
+  ( " " ~
+    ((ASCII_ALPHA_LOWER | ASCII_DIGIT | "_" | "-" | ":" | "\\" | "/" )+ ~ ", ")* ~  // Tags before the last one must end with a comma and a space.
+    (ASCII_ALPHA_LOWER | ASCII_DIGIT | "_" | "-" | ":" | "\\" | "/" )+              // The last tag cannot have a trailing comma.
+  )?
+}
+description = { "description =" ~ (" " ~ text_oneline)? }
+notes =  {
+  "notes =" ~
+  (
+    NEWLINE ~
+    "\t" ~ text_oneline ~
+    (NEWLINE ~ "\t" ~ text_oneline)*
+  )?
+}
+
+permissions =  {
+  "permissions =" ~
+  (
+    (" " ~ permissions_rights) |
+    (
+      NEWLINE ~
+      permissions_bucket ~
+     (
+       NEWLINE ~ permissions_path ~ NEWLINE ~
+       "\t\t" ~ permissions_rights
+      )+
+    )*
+  )
+}
+permissions_bucket =  {  "- " ~ text_oneline  }
+permissions_path = { "\t" ~ text_oneline }
+// Rights are only accepted in lexicographic order.
+// `all` is only allowed alone.
+// When more than one they are separated by comma and a space. The last one cannot have a trailing comma.
+permissions_rights = {
+  "delete, list, read, write" |
+  "delete, list, read" | "delete, list, write" | "delete, read, write" |
+  "delete, read" |
+  "delete, list" |
+  "delete, write" |
+  "delete" |
+  "list, read, write" |
+  "list, read" | "list, write" |
+  "list" |
+  "read, write" |
+  "read" |
+  "write" |
+  "all"
+}
+
+metadata = {
+  "metadata =" ~
+    NEWLINE ~
+  (
+    metadata_field_name ~
+    metadata_field_value ~
+    NEWLINE
+  )*
+}
+metadata_field_name = { "- " ~ text_oneline }
+metadata_field_value = { (NEWLINE ~ "\t" ~ text_oneline)+ }
+
+file = {
+  SOI ~
+  (
+    project+
+  )? ~
+  EOI
+}
