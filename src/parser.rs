@@ -1,3 +1,5 @@
+//! Parser for the AGS file.
+
 use pest_derive::Parser;
 
 #[derive(Parser)]
