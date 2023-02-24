@@ -1,11 +1,27 @@
-text_oneline = { (!NEWLINE ~ ANY)+ }
-text_multiline = { ANY+ }
+//! AGS text file format grammar.
 
+/// The entire AGS file.
+/// An AGS file has 1 or multiple projects.
+file = {
+  SOI ~
+  (
+    project+
+  )? ~
+  EOI
+}
+
+/// Defines a project.
+/// A project is a collection of access grants.
 project = {
   "# " ~ text_oneline ~ NEWLINE{2} ~
   access_grant+
 }
 
+/// Defines an access grant.
+/// An access grant has a name given it by the user, the actual grant (encrypted), a list of tags, a
+/// description, notes, its permissions, an metadata.
+/// All the fields must be present, but not all of them require to have a value, hence, they can be
+/// empty if the user don't want to provide that information.
 access_grant = {
   "## " ~ text_oneline ~ NEWLINE ~
   grant ~ NEWLINE ~
@@ -16,7 +32,12 @@ access_grant = {
   metadata ~ NEWLINE
 }
 
+/// This is the actual grant itself. That's the encoded form of the STORJ Access Grant, but
+//encrypted.
 grant = { "grant = " ~ text_oneline }
+/// Tags is a list of comma separated words.
+/// A word can be simple or compound. A word cannot have spaces, but it can contain some symbols to
+/// separate different words to create a compound word.
 tags = {
   "tags =" ~
   ( " " ~
@@ -24,7 +45,10 @@ tags = {
     (ASCII_ALPHA_LOWER | ASCII_DIGIT | "_" | "-" | ":" | "\\" | "/" )+              // The last tag cannot have a trailing comma.
   )?
 }
+/// Description is a one-line free text field.
 description = { "description =" ~ (" " ~ text_oneline)? }
+/// Notes is a multi-line free text field, whose value start in the next line and each line is
+/// indented by a tab.
 notes =  {
   "notes =" ~
   (
@@ -34,6 +58,8 @@ notes =  {
   )?
 }
 
+/// The permissions of the access grant.
+/// An access grant can define rights for the entire project or for specific buckets.
 permissions =  {
   "permissions =" ~
   (
@@ -48,11 +74,17 @@ permissions =  {
     )*
   )
 }
+/// The bucket's name where the permissions apply.
 permissions_bucket =  {  "- " ~ text_oneline  }
+/// The object's path of the bucket where the permissions apply.
+/// A specific character is used to specify that the rights apply to the entire bucket, in that case
+/// the bucket should only have one path entry.
 permissions_path = { "\t" ~ text_oneline }
-// Rights are only accepted in lexicographic order.
-// `all` is only allowed alone.
-// When more than one they are separated by comma and a space. The last one cannot have a trailing comma.
+/// The rights of the permissions, that's for the entire project or for the specified buckets and
+/// paths.
+/// Rights are only accepted in lexicographic order.
+/// `all` is only allowed alone.
+/// When more than one they are separated by comma and a space. The last one cannot have a trailing comma.
 permissions_rights = {
   "delete, list, read, write" |
   "delete, list, read" | "delete, list, write" | "delete, read, write" |
@@ -69,6 +101,8 @@ permissions_rights = {
   "all"
 }
 
+/// Associated access grant metadata.
+/// Each entry, field name and value are one-line free text.
 metadata = {
   "metadata =" ~
     NEWLINE ~
@@ -81,10 +115,6 @@ metadata = {
 metadata_field_name = { "- " ~ text_oneline }
 metadata_field_value = { (NEWLINE ~ "\t" ~ text_oneline)+ }
 
-file = {
-  SOI ~
-  (
-    project+
-  )? ~
-  EOI
-}
+/// General rules used across the grammar.
+text_oneline = { (!NEWLINE ~ ANY)+ }
+text_multiline = { ANY+ }
