@@ -1,0 +1,24 @@
+# my project
+
+This is the description of the project to remember for what I use this
+project.
+
+## my access
+grant = my grant value encrypted
+tags = one, two
+description = this is my access grant for ...
+notes =
+	This is a note.
+	Notes support multiline text.
+permissions =
+- my-bucket
+	wow
+		read, write
+metadata =
+- field 1
+	wow
+- field 2
+	Multiple lines are OK. Each new line has to be indented by one tab, which are not
+	considered part of the text.
+	The last blank line before the next user's field, field, project or access grant is not
+	considered part of this text.

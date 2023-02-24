@@ -14,3 +14,4 @@ keywords = ["storj", "storjlabs", "decentralized", "access-grant", "store"]
 [dependencies]
 pest = "~2.6"
 pest_derive = "~2.6"
+regex = "1.8.4"

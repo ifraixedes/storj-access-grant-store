@@ -12,4 +12,6 @@
 
 #![deny(missing_docs)]
 
+mod error;
 mod parser;
+mod store;
