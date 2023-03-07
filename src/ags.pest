@@ -9,7 +9,12 @@ file = {
 /// Defines a project.
 /// A project is a collection of access grants.
 project = {
-    "# " ~ text_oneline ~ NEWLINE{2} ~ access_grant+
+    "# " ~ text_oneline ~ project_description ~ access_grant+
+}
+
+project_description = {
+    NEWLINE ~ (NEWLINE ~ !"#" ~ text_oneline)+ ~ NEWLINE{2}
+  | NEWLINE ~ NEWLINE
 }
 
 /// Defines an access grant.
@@ -90,5 +95,5 @@ metadata_field_name  = { "- " ~ text_oneline }
 metadata_field_value = { (NEWLINE ~ "\t" ~ text_oneline)+ }
 
 /// General rules used across the grammar.
-text_oneline   = { (!NEWLINE ~ ANY)+ }
-text_multiline = { ANY+ }
+text_oneline   = _{ (!NEWLINE ~ ANY)+ }
+text_multiline = _{ ANY+ }

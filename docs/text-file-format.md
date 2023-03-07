@@ -27,6 +27,9 @@ Let's see an example:
 ```
 # project-name
 
+A project can have a multiline text to describe it before the first access grant
+definition. The description is optional and always is in between two blank lines.
+
 ## restricted-access-grant-name
 grant = this is the access grant encrypted
 tags = one, two, three
@@ -88,9 +91,10 @@ space.
 
 It can contains multiple projects. Projects' names are unique and MUST have at least one character.
 
-A project's name follows with a blank line.
+A project's name follows with a blank line and an optional description. A description is multiline
+text followed by a blank line.
 
-It MUST contain at least one [access grant](#access-grant).
+A project MUST contain at least one [access grant](#access-grant).
 
 ### Access grant
 
