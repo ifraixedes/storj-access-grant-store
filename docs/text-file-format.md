@@ -27,6 +27,9 @@ Let's see an example:
 ```
 # project-name
 
+A project can have a multiline text to describe it before the first access grant
+definition. The description is optional and always is in between to blank lines.
+
 ## restricted-access-grant-name
 grant = this is the access grant encrypted
 tags = one, two, three
