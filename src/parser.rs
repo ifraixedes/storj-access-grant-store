@@ -11,6 +11,13 @@ mod tests {
     use pest::Parser;
 
     #[test]
+    fn test_ags_pest_parse_no_projects() {
+        let unparsed_file = "";
+
+        AGS::parse(Rule::file, unparsed_file).expect("unsuccessful parse");
+    }
+
+    #[test]
     fn test_ags_pest_parse_one_project_one_access_all_filled() {
         let unparsed_file = r#"# my project
 
@@ -33,7 +40,6 @@ metadata =
 	considered part of the text.
 	The last blank line before the next user's field, field, project or access grant is not
 	considered part of this text.
-
 "#;
 
         AGS::parse(Rule::file, unparsed_file).expect("unsuccessful parse");
@@ -50,7 +56,6 @@ description =
 notes =
 permissions = all
 metadata =
-
 "#;
 
         AGS::parse(Rule::file, unparsed_file).expect("unsuccessful parse");
@@ -87,7 +92,6 @@ metadata =
 	- Client A
 	- Client B
 	- Client C
-
 "#;
 
         AGS::parse(Rule::file, unparsed_file).expect("unsuccessful parse");
@@ -167,7 +171,6 @@ metadata =
 	considered part of the text.
 	The last blank line before the next user's field, field, project or access grant is not
 	considered part of this text.
-
 "#;
 
         AGS::parse(Rule::file, unparsed_file).expect("unsuccessful parse");
@@ -207,7 +210,6 @@ metadata =
 	- Client A
 	- Client B
 	- Client C
-
 "#;
 
         AGS::parse(Rule::file, unparsed_file).expect("unsuccessful parse");
@@ -305,7 +307,6 @@ permissions =
 	/
 		list, read, write
 metadata =
-
 "#;
 
         AGS::parse(Rule::file, unparsed_file).expect("unsuccessful parse");

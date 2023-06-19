@@ -66,7 +66,6 @@ description =
 notes =
 permissions = list, read
 metadata =
-
 ```
 
 The file doesn't contemplate to contain access grants of different accounts. If you want to store

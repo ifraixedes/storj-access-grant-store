@@ -3,7 +3,7 @@
 /// The entire AGS file.
 /// An AGS file has 1 or multiple projects.
 file = {
-    SOI ~ (project+)? ~ EOI
+    SOI ~ (project ~ (NEWLINE ~ project)*)? ~ EOI
 }
 
 /// Defines a project.
@@ -13,8 +13,8 @@ project = {
 }
 
 project_description = {
-    NEWLINE ~ (NEWLINE ~ !"#" ~ text_oneline)+ ~ NEWLINE{2}
-  | NEWLINE ~ NEWLINE
+    NEWLINE ~ (NEWLINE ~ !"#" ~ text_oneline)+ ~ NEWLINE
+  | NEWLINE
 }
 
 /// Defines an access grant.
@@ -23,7 +23,7 @@ project_description = {
 /// All the fields must be present, but not all of them require to have a value, hence, they can be
 /// empty if the user don't want to provide that information.
 access_grant = {
-    "## " ~ text_oneline ~ NEWLINE ~ grant ~ NEWLINE ~ tags ~ NEWLINE ~ description ~ NEWLINE ~ notes ~ NEWLINE ~ permissions ~ NEWLINE ~ metadata ~ NEWLINE
+    NEWLINE ~ "## " ~ text_oneline ~ NEWLINE ~ grant ~ NEWLINE ~ tags ~ NEWLINE ~ description ~ NEWLINE ~ notes ~ NEWLINE ~ permissions ~ NEWLINE ~ metadata ~ NEWLINE
 }
 
 /// This is the actual grant itself. That's the encoded form of the STORJ Access Grant, but
@@ -89,7 +89,7 @@ permissions_rights = {
 /// Associated access grant metadata.
 /// Each entry, field name and value are one-line free text.
 metadata             = {
-    "metadata =" ~ NEWLINE ~ (metadata_field_name ~ metadata_field_value ~ NEWLINE)*
+    "metadata =" ~ (NEWLINE ~ metadata_field_name ~ metadata_field_value)*
 }
 metadata_field_name  = { "- " ~ text_oneline }
 metadata_field_value = { (NEWLINE ~ "\t" ~ text_oneline)+ }
