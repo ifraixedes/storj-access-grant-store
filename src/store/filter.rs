@@ -2,6 +2,7 @@
 
 use crate::error::Error;
 
+use std::cell::OnceCell;
 use std::rc::Rc;
 
 use regex::Regex;
@@ -17,8 +18,9 @@ impl Filter {}
 
 /// Builds a filter with the indicated predicates.
 pub struct Builder {
-    root: Option<Rc<Node>>,
-    cursor: Option<Rc<Node>>,
+    root: Option<Rc<BuilderNode>>,
+    current: Option<Rc<BuilderNode>>,
+    current_parent: Option<Rc<BuilderNode>>,
 }
 
 impl Builder {
@@ -26,7 +28,8 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             root: None,
-            cursor: None,
+            current: None,
+            current_parent: None,
         }
     }
 
@@ -48,31 +51,8 @@ impl Builder {
     where
         F: ToString,
     {
-        match self.root {
-            None => {
-                self.root = Some(Rc::new(Node::Exp {
-                    field: field.to_string(),
-                    value: exp,
-                }));
-                self.cursor = Some(Rc::clone(
-                    self.root.as_ref().expect("BUG: root cannot be None"),
-                ));
-                Connector { builder: self }
-            }
-            Some(_) => {
-                let mut node = *self.cursor.expect("BUG: cursor cannot be None ");
-                match &mut node {
-                    Node::And { left, right } => {
-                        *right = Box::new(Node::Exp {
-                            field: field.to_string(),
-                            value: exp,
-                        });
-
-                        Connector { builder: self }
-                    }
-                }
-            }
-        }
+        // TODO: continue here!
+        todo!();
     }
 }
 
@@ -101,6 +81,18 @@ impl Connector {
     }
 }
 
+struct BuilderNode {
+    kind: BuilderNodeKind,
+    left: Rc<BuilderNode>,
+    right: Rc<BuilderNode>,
+}
+
+enum BuilderNodeKind {
+    And,
+    Or,
+    Exp { field: String, value: Regex },
+}
+
 /// Represents a node of the tree representation of a filter.
 #[derive(Debug)]
 enum Node {
@@ -108,6 +100,60 @@ enum Node {
     Or { left: Box<Node>, right: Box<Node> },
     Exp { field: String, value: Regex },
     Empty,
+}
+
+/// Set `child` to `parent`'s right.
+///
+/// This method helps to detect bugs of `Builder` implementation through panics, so it assumes that
+/// `parent` and its children, and `child` are of certain variants.
+fn set_right_child(mut parent: Node, child: Node) -> Node {
+    if let Node::Empty = child {
+        panic!("BUG: setting a `Node::Empty` as a parent's right node")
+    }
+    match &mut parent {
+        Node::And { left, right } | Node::Or { left, right } => {
+            if let Node::Empty = **left {
+                panic!("BUG: setting a right child node to a parent node of a variant `Node::And` or  `Node::Or` whose left node isn't `Node::Empty`");
+            } else if let Node::Empty = **right {
+                *right = Box::new(child);
+            } else {
+                panic!("BUG: setting a right child node to a parent node of a variant `Node::And` or  `Node::Or` whose right node isn't `Node::Empty`");
+            }
+        }
+        _ => panic!(
+            "BUG: setting a node to a parent node that isn't a variant `Node:And`, nor `Node:Or`"
+        ),
+    };
+
+    parent
+}
+
+/// Set `child` to `parent`'s left.
+///
+/// This method helps to detect bugs of `Builder` implementation through panics, so it assumes that
+/// `parent` and its children, and `child` are of certain variants.
+fn set_left_child(mut parent: Node, child: Node) -> Node {
+    if let Node::Empty = child {
+        panic!("BUG: setting a `Node::Empty` as a parent's left node")
+    }
+    match &mut parent {
+        Node::And { left, right } | Node::Or { left, right } => {
+            if let Node::Empty = **right {
+                if let Node::Empty = **left {
+                    *left = Box::new(child);
+                } else {
+                    panic!("BUG: adding a left child node to a parent node of a variant `Node::And` or  `Node::Or` whose left node isn't `Node::Empty`");
+                }
+            } else {
+                panic!("BUG: adding a left child node to a parent node of a variant `Node::And` or  `Node::Or` whose right node isn't `Node::Empty`");
+            }
+        }
+        _ => panic!(
+            "BUG: adding a node to a parent node that isn't a variant `Node:And`, nor `Node:Or`"
+        ),
+    };
+
+    parent
 }
 
 #[cfg(test)]
@@ -165,11 +211,11 @@ mod test {
     }
 
     /*
-    #[test]
-    fn build_filter_unsuccessfully() {
-        // TODO: check errors variant
+       #[test]
+       fn build_filter_unsuccessfully() {
+    // TODO: check errors variant
 
-        let err = Builder::new()
+    let err = Builder::new()
             .regex("foo", "[bar")
             .end()
             .expect_err("one field: invalid regex");
