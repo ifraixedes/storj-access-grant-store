@@ -3,6 +3,7 @@
 use crate::error::Error;
 
 use std::cell::OnceCell;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use regex::Regex;
@@ -18,9 +19,9 @@ impl Filter {}
 
 /// Builds a filter with the indicated predicates.
 pub struct Builder {
-    root: Option<Rc<BuilderNode>>,
-    current: Option<Rc<BuilderNode>>,
-    current_parent: Option<Rc<BuilderNode>>,
+    root: Option<Rc<Node>>,
+    last_added: Option<Rc<Node>>,
+    last_non_leaf: Option<Rc<Node>>,
 }
 
 impl Builder {
@@ -28,8 +29,8 @@ impl Builder {
     pub fn new() -> Self {
         Self {
             root: None,
-            current: None,
-            current_parent: None,
+            last_added: None,
+            last_non_leaf: None,
         }
     }
 
@@ -51,8 +52,28 @@ impl Builder {
     where
         F: ToString,
     {
-        // TODO: continue here!
-        todo!();
+        self.last_added = Some(Rc::new(Node::Exp {
+            field: field.to_string(),
+            value: exp,
+        }));
+
+        if let Some(n) = &self.last_non_leaf {
+            let (left, right) = n.has_children();
+            if !left || right {
+                panic!("BUG: `last_non_leaf` without a left child or with a right child");
+            }
+
+            // TODO: continue here!!
+            // experimenting how to do this
+            n.set_left_child(Rc::clone(n));
+
+            match *n {
+                Node::And { left, right } => todo!(),
+                Node::Or { left, right } => todo!(),
+            }
+        }
+
+        Connector { builder: self }
     }
 }
 
@@ -64,6 +85,25 @@ pub struct Connector {
 impl Connector {
     /// A logical `and` operator between a previous predicate and the next one to append.
     fn and(mut self) -> Builder {
+        let leaf = {
+            let rc = self
+                .builder
+                .last_added
+                .expect("BUG: Calling Connector::and method with a Builder::last_added = None");
+            Rc::try_unwrap(rc).expect("BUG: Calling Connector::and method with a Builder::last_added with more than one strong reference")
+        };
+
+        if self.builder.root.is_none() {
+            self.builder.root = Some(Rc::new(Node::And {
+                left: Box::new(leaf),
+                right: Box::new(Node::Empty),
+            }));
+        } else {
+            // TODO: continue here
+            let rc = self.builder.root.unwrap();
+            let root = Rc::try_unwrap(rc).expect("BUG: Calling Connector::end method with a Builder::root with more than one strong reference");
+        }
+
         todo!();
     }
 
@@ -77,20 +117,19 @@ impl Connector {
     /// It returns an error if there was an error when building the filter, for example, an
     /// expression that has to be a valid regular expression isn't valid.
     fn end(mut self) -> Filter {
-        todo!();
+        let root: Rc<Node> = match self.builder.root {
+            Some(root) => root,
+            None => self
+                .builder
+                .last_added
+                .expect("BUG: Calling Connector::and method with a Builder::last_added = None"),
+        };
+
+        self.builder.last_added = None;
+        Filter {
+            root: Rc::try_unwrap(root).expect("BUG: Calling Connector::end method with a Builder::root with more than one strong reference"),
+        }
     }
-}
-
-struct BuilderNode {
-    kind: BuilderNodeKind,
-    left: Rc<BuilderNode>,
-    right: Rc<BuilderNode>,
-}
-
-enum BuilderNodeKind {
-    And,
-    Or,
-    Exp { field: String, value: Regex },
 }
 
 /// Represents a node of the tree representation of a filter.
@@ -100,6 +139,34 @@ enum Node {
     Or { left: Box<Node>, right: Box<Node> },
     Exp { field: String, value: Regex },
     Empty,
+}
+
+impl Node {
+    fn is_leaf(&self) -> bool {
+        match self {
+            Node::And { left: _, right: _ } | Node::Or { left: _, right: _ } => false,
+            _ => true,
+        }
+    }
+
+    fn has_children(&self) -> (bool, bool) {
+        match self {
+            Node::And { left, right } | Node::Or { left, right } => (
+                !matches!(**left, Node::Empty),
+                !matches!(**right, Node::Empty),
+            ),
+            _ => (false, false),
+        }
+    }
+
+    fn set_left_child(&mut self, child: Node) {
+        match self {
+            Node::And { mut left, right } | Node::Or { mut left, right } => {
+                left = Box::new(child);
+            }
+            _ => todo!(),
+        }
+    }
 }
 
 /// Set `child` to `parent`'s right.
@@ -161,6 +228,24 @@ mod test {
     use super::*;
 
     #[test]
+    fn build_filter_with_num_conds_1() {
+        let bar = Regex::new("bar").expect("valid regex");
+        let _ = Builder::new().regex("foo", bar).end();
+    }
+
+    #[test]
+    fn build_filter_with_num_conds_2() {
+        let bar = Regex::new("bar").expect("valid regex");
+        let bar2 = Regex::new("bar2").expect("valid regex");
+        let _ = Builder::new()
+            .regex("foo", bar)
+            .and()
+            .regex("foo2", bar2)
+            .end();
+    }
+
+    #[test]
+    #[ignore]
     fn build_filter_successfully() {
         let bar = Regex::new("bar").expect("valid regex");
         let filter_simple = Builder::new().regex("foo", bar).end();
