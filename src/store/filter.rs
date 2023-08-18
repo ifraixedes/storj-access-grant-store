@@ -19,18 +19,20 @@ impl Filter {}
 
 /// Builds a filter with the indicated predicates.
 pub struct Builder {
-    root: Option<Rc<Node>>,
-    last_added: Option<Rc<Node>>,
-    last_non_leaf: Option<Rc<Node>>,
+    root: Rc<Node>,
+    last_parent: Option<Rc<Node>>,
+    left_child: Option<Rc<Node>>,
+    right_child: Option<Rc<Node>>,
 }
 
 impl Builder {
     /// Creates a builder for building a [`Filter`].
     pub fn new() -> Self {
         Self {
-            root: None,
-            last_added: None,
-            last_non_leaf: None,
+            root: Rc::new(Node::Empty),
+            last_parent: None,
+            left_child: None,
+            right_child: None,
         }
     }
 
@@ -52,28 +54,48 @@ impl Builder {
     where
         F: ToString,
     {
-        self.last_added = Some(Rc::new(Node::Exp {
+        let leaf = Rc::new(Node::Exp {
             field: field.to_string(),
             value: exp,
-        }));
+        });
 
-        if let Some(n) = &self.last_non_leaf {
-            let (left, right) = n.has_children();
-            if !left || right {
-                panic!("BUG: `last_non_leaf` without a left child or with a right child");
-            }
-
-            // TODO: continue here!!
-            // experimenting how to do this
-            n.set_left_child(Rc::clone(n));
-
-            match *n {
-                Node::And { left, right } => todo!(),
-                Node::Or { left, right } => todo!(),
-            }
+        if self.root.is_empty() {
+            self.root = leaf;
         }
 
+        //        if self.last_parent.is_none() {
+        //            self.last_parent = Some(Rc::new(Node::Exp {
+        //                field: field.to_string(),
+        //                value: exp,
+        //            }));
+        //        } else {
+        //            let last_parent = self.last_parent.as_mut().expect("BUG: accessing to Builder::last_parent with is `None`. This code should be executed after ensuring that isn't `None`");
+        //        }
+
         Connector { builder: self }
+    }
+
+    fn build(self) -> Filter {
+        //  let root = if let Some(r) = self.root {
+        //      Rc::try_unwrap(r).expect(
+        //          "BUG: called Builder::build with a root node with more than one strong reference",
+        //      )
+        //  } else if let Some(p) = self.last_parent {
+        //      Rc::try_unwrap(p)
+        //          .expect("BUG: called Builder::build without a root, but with a last parent node with more than one strong reference")
+        //  } else {
+        //      let l = self.left_child.expect(
+        //          "BUG: Builder::build without a root and a last parent and without a left child",
+        //      );
+        //      Rc::try_unwrap(l)
+        //          .expect("BUG: called Builder::build without a root and a last parent, but with a left child node with more than one strong reference")
+        //  };
+
+        Filter {
+            root: Rc::try_unwrap(self.root).expect(
+                "BUG: called Builder::build with a root node with more than one strong reference",
+            ),
+        }
     }
 }
 
@@ -85,6 +107,22 @@ pub struct Connector {
 impl Connector {
     /// A logical `and` operator between a previous predicate and the next one to append.
     fn and(mut self) -> Builder {
+        if let Some(p) = self.builder.last_parent {
+            todo!();
+        } else {
+            // TODO: Continue here
+            self.builder.last_parent = Some(Rc::new(Node::And { left: (), right: () });
+        }
+
+        if self.builder.root.is_leaf() {
+            self.builder.root =
+                Rc::clone(self.builder.last_parent.as_ref().expect(
+                    "BUG: accessing to Builder::last_parent with is `None`. This code should be executed after ensuring that isn't `None`",
+                ));
+        }
+
+        self.builder
+        /*
         let leaf = {
             let rc = self
                 .builder
@@ -99,12 +137,10 @@ impl Connector {
                 right: Box::new(Node::Empty),
             }));
         } else {
-            // TODO: continue here
             let rc = self.builder.root.unwrap();
             let root = Rc::try_unwrap(rc).expect("BUG: Calling Connector::end method with a Builder::root with more than one strong reference");
         }
-
-        todo!();
+        */
     }
 
     /// A logical `or` operator between a previous predicate and the next one to append.
@@ -117,18 +153,7 @@ impl Connector {
     /// It returns an error if there was an error when building the filter, for example, an
     /// expression that has to be a valid regular expression isn't valid.
     fn end(mut self) -> Filter {
-        let root: Rc<Node> = match self.builder.root {
-            Some(root) => root,
-            None => self
-                .builder
-                .last_added
-                .expect("BUG: Calling Connector::and method with a Builder::last_added = None"),
-        };
-
-        self.builder.last_added = None;
-        Filter {
-            root: Rc::try_unwrap(root).expect("BUG: Calling Connector::end method with a Builder::root with more than one strong reference"),
-        }
+        self.builder.build()
     }
 }
 
@@ -142,6 +167,21 @@ enum Node {
 }
 
 impl Node {
+    fn new_emtpy_and() -> Self {
+        Node::And {
+            left: Box::new(Node::Empty),
+            right: Box::new(Node::Empty),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        if let Node::Empty = self {
+            true
+        } else {
+            false
+        }
+    }
+
     fn is_leaf(&self) -> bool {
         match self {
             Node::And { left: _, right: _ } | Node::Or { left: _, right: _ } => false,
@@ -161,8 +201,8 @@ impl Node {
 
     fn set_left_child(&mut self, child: Node) {
         match self {
-            Node::And { mut left, right } | Node::Or { mut left, right } => {
-                left = Box::new(child);
+            Node::And { left, right: _ } | Node::Or { left, right: _ } => {
+                *left = Box::new(child);
             }
             _ => todo!(),
         }
