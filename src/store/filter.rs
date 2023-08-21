@@ -90,6 +90,9 @@ impl Builder {
         //      Rc::try_unwrap(l)
         //          .expect("BUG: called Builder::build without a root and a last parent, but with a left child node with more than one strong reference")
         //  };
+        if let Some(p) = self.last_parent {
+            drop(p);
+        }
 
         Filter {
             root: Rc::try_unwrap(self.root).expect(
@@ -107,11 +110,13 @@ pub struct Connector {
 impl Connector {
     /// A logical `and` operator between a previous predicate and the next one to append.
     fn and(mut self) -> Builder {
-        if let Some(p) = self.builder.last_parent {
-            todo!();
+        if let Some(previous) = self.builder.last_parent {
+            if Rc::ptr_eq(&previous, &self.builder.root) {}
         } else {
-            // TODO: Continue here
-            self.builder.last_parent = Some(Rc::new(Node::And { left: (), right: () });
+            self.builder.last_parent = Some(Rc::new(Node::And {
+                left: Box::new(Node::Empty),
+                right: Box::new(Node::Empty),
+            }));
         }
 
         if self.builder.root.is_leaf() {
@@ -207,6 +212,46 @@ impl Node {
             _ => todo!(),
         }
     }
+
+    fn append_and_to_left(&mut self) {
+        match self {
+            Node::And { left: _, right } | Node::Or { left: _, right } => {
+                if right.is_leaf() {
+                    let and = Node::And {
+                        right: *right,
+                        left: Box::new(Node::Empty),
+                    };
+                    *right = Box::new(and);
+                } else {
+                }
+            }
+            _ => todo!(),
+        };
+    }
+
+    /*
+    fn get_right_child(&mut self) -> Node {
+        match self {
+            Node::And { left: _, right } | Node::Or { left: _, right } => **right,
+            _ => todo!(),
+        }
+    }
+    */
+
+    /*
+    fn derive_right_child(&mut self, child: Node) {
+        match self {
+            Node::And { left: _, right } | Node::Or { left: _, right } => {
+                if right.is_leaf() {
+                    *right = Box::new(child);
+                } else {
+
+                }
+            }
+            _ => todo!(),
+        };
+    }
+    */
 }
 
 /// Set `child` to `parent`'s right.
@@ -281,6 +326,20 @@ mod test {
             .regex("foo", bar)
             .and()
             .regex("foo2", bar2)
+            .end();
+    }
+
+    #[test]
+    fn build_filter_with_num_conds_3() {
+        let bar = Regex::new("bar").expect("valid regex");
+        let bar2 = Regex::new("bar2").expect("valid regex");
+        let bar3 = Regex::new("bar3").expect("valid regex");
+        let _ = Builder::new()
+            .regex("foo", bar)
+            .and()
+            .regex("foo2", bar2)
+            .and()
+            .regex("foo2", bar3)
             .end();
     }
 
