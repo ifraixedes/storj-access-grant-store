@@ -1,9 +1,6 @@
 //!  Types for finding access grants inside AGS content.
 
-use crate::error::Error;
-
-use std::cell::OnceCell;
-use std::ops::Deref;
+use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
 
 use regex::Regex;
@@ -17,27 +14,34 @@ pub struct Filter {
 
 impl Filter {}
 
+/// Represents a node of the tree representation of a filter.
+#[derive(Debug)]
+enum Node {
+    And { left: Box<Node>, right: Box<Node> },
+    Or { left: Box<Node>, right: Box<Node> },
+    Exp { field: String, value: Regex },
+}
+
 /// Builds a filter with the indicated predicates.
 pub struct Builder {
-    root: Rc<Node>,
-    last_parent: Option<Rc<Node>>,
-    left_child: Option<Rc<Node>>,
-    right_child: Option<Rc<Node>>,
+    // TODO: Try using a OnceCell.
+    /// points to the root node of the tree.
+    root: Option<Rc<RefCell<BuilderNode>>>,
+    /// points to the last non-leaf node added to the tree.
+    pointer: Option<Rc<RefCell<BuilderNode>>>,
 }
 
 impl Builder {
     /// Creates a builder for building a [`Filter`].
     pub fn new() -> Self {
         Self {
-            root: Rc::new(Node::Empty),
-            last_parent: None,
-            left_child: None,
-            right_child: None,
+            root: None,
+            pointer: None,
         }
     }
 
     /// Nests a filter into the current position of the filter that this instances is building.
-    pub fn nest(mut self, filter: Filter) -> Connector {
+    pub fn nest(self, filter: Filter) -> Connector {
         todo!();
     }
 
@@ -54,50 +58,28 @@ impl Builder {
     where
         F: ToString,
     {
-        let leaf = Rc::new(Node::Exp {
-            field: field.to_string(),
-            value: exp,
-        });
-
-        if self.root.is_empty() {
-            self.root = leaf;
+        if let Some(ref pointer) = self.pointer {
+            // TODO: I don't understand why I have to call `as_ref()`, otherwise, it doesn't
+            // compile while the following code works
+            // https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=009a905385dc51c0d172fca9cecdade5
+            let mut node = pointer.as_ref().borrow_mut();
+            node.set_expression_as_right_child(field, exp);
+        } else {
+            self.root = Some(Rc::new(RefCell::new(BuilderNode::new_leaf(field, exp))));
         }
-
-        //        if self.last_parent.is_none() {
-        //            self.last_parent = Some(Rc::new(Node::Exp {
-        //                field: field.to_string(),
-        //                value: exp,
-        //            }));
-        //        } else {
-        //            let last_parent = self.last_parent.as_mut().expect("BUG: accessing to Builder::last_parent with is `None`. This code should be executed after ensuring that isn't `None`");
-        //        }
 
         Connector { builder: self }
     }
 
     fn build(self) -> Filter {
-        //  let root = if let Some(r) = self.root {
-        //      Rc::try_unwrap(r).expect(
-        //          "BUG: called Builder::build with a root node with more than one strong reference",
-        //      )
-        //  } else if let Some(p) = self.last_parent {
-        //      Rc::try_unwrap(p)
-        //          .expect("BUG: called Builder::build without a root, but with a last parent node with more than one strong reference")
-        //  } else {
-        //      let l = self.left_child.expect(
-        //          "BUG: Builder::build without a root and a last parent and without a left child",
-        //      );
-        //      Rc::try_unwrap(l)
-        //          .expect("BUG: called Builder::build without a root and a last parent, but with a left child node with more than one strong reference")
-        //  };
-        if let Some(p) = self.last_parent {
-            drop(p);
-        }
+        drop(self.pointer);
 
+        // TODO: has to build this method
         Filter {
-            root: Rc::try_unwrap(self.root).expect(
-                "BUG: called Builder::build with a root node with more than one strong reference",
-            ),
+            root: Node::Exp {
+                field: String::from("todo"),
+                value: Regex::new(".*").unwrap(),
+            },
         }
     }
 }
@@ -109,68 +91,159 @@ pub struct Connector {
 
 impl Connector {
     /// A logical `and` operator between a previous predicate and the next one to append.
-    fn and(mut self) -> Builder {
-        if let Some(previous) = self.builder.last_parent {
-            if Rc::ptr_eq(&previous, &self.builder.root) {}
-        } else {
-            self.builder.last_parent = Some(Rc::new(Node::And {
-                left: Box::new(Node::Empty),
-                right: Box::new(Node::Empty),
-            }));
-        }
-
-        if self.builder.root.is_leaf() {
-            self.builder.root =
-                Rc::clone(self.builder.last_parent.as_ref().expect(
-                    "BUG: accessing to Builder::last_parent with is `None`. This code should be executed after ensuring that isn't `None`",
-                ));
-        }
-
-        self.builder
-        /*
-        let leaf = {
-            let rc = self
-                .builder
-                .last_added
-                .expect("BUG: Calling Connector::and method with a Builder::last_added = None");
-            Rc::try_unwrap(rc).expect("BUG: Calling Connector::and method with a Builder::last_added with more than one strong reference")
-        };
-
-        if self.builder.root.is_none() {
-            self.builder.root = Some(Rc::new(Node::And {
-                left: Box::new(leaf),
-                right: Box::new(Node::Empty),
-            }));
-        } else {
-            let rc = self.builder.root.unwrap();
-            let root = Rc::try_unwrap(rc).expect("BUG: Calling Connector::end method with a Builder::root with more than one strong reference");
-        }
-        */
+    pub fn and(mut self) -> Builder {
+        self.connect(BuilderNodeType::And)
     }
 
     /// A logical `or` operator between a previous predicate and the next one to append.
-    fn or(mut self) -> Builder {
-        todo!();
+    pub fn or(mut self) -> Builder {
+        self.connect(BuilderNodeType::Or)
     }
 
     /// Ends the build process returning the built filter.
     ///
     /// It returns an error if there was an error when building the filter, for example, an
     /// expression that has to be a valid regular expression isn't valid.
-    fn end(mut self) -> Filter {
+    pub fn end(mut self) -> Filter {
         self.builder.build()
+    }
+
+    fn connect(mut self, op: BuilderNodeType) -> Builder {
+        // TODO: check if it's possible to only compile these assertions during tests
+        assert!(
+            !op.is_leaf(),
+            "BUG: calling Connector::connect with a leaf BuilderNodeType"
+        );
+
+        if let Some(ref pointer) = self.builder.pointer {
+            // This case is adding a new condition to the filter which is building, so the new
+            // non-leaf node (in this case an AND operator) has to be added to the right.
+            let and = Rc::new(RefCell::new(BuilderNode {
+                this: op,
+                left: None,
+                right: None,
+            }));
+
+            let right = pointer.as_ref().borrow_mut().right.replace(Rc::clone(&and)).expect(
+                "BUG: Builder::pointer must have a right child when Connector::and method is called",
+            );
+
+            and.as_ref().borrow_mut().set_left(right);
+            self.builder.pointer = Some(and);
+        } else {
+            // This case happens only when the first non-leaf node (in this case an AND operator) is
+            // added to the filter which is building. This non-leaf node become the root of the
+            // filter.
+            let root = self
+                .builder
+                .root
+                .expect("BUG: Builder::root cannot be `None` when Connector::and method is called");
+            self.builder.pointer = Some(Rc::new(RefCell::new(BuilderNode {
+                this: op,
+                left: Some(Rc::clone(&root)),
+                right: None,
+            })));
+            self.builder.root = Some(Rc::clone(&root));
+        }
+
+        self.builder
     }
 }
 
-/// Represents a node of the tree representation of a filter.
 #[derive(Debug)]
-enum Node {
-    And { left: Box<Node>, right: Box<Node> },
-    Or { left: Box<Node>, right: Box<Node> },
-    Exp { field: String, value: Regex },
-    Empty,
+struct BuilderNode {
+    this: BuilderNodeType,
+    left: Option<Rc<RefCell<BuilderNode>>>,
+    right: Option<Rc<RefCell<BuilderNode>>>,
+    /*
+    this: Rc<BuilderNodeType>,
+    left: Option<Rc<BuilderNode>>,
+    right: Option<Rc<BuilderNode>>,
+    */
+    /*
+    this: Rc<RefCell<BuilderNodeType>>,
+    left: Option<Rc<RefCell<BuilderNodeType>>>,
+    right: Option<Rc<RefCell<BuilderNodeType>>>,
+    */
 }
 
+impl BuilderNode {
+    fn new_leaf<F>(field: F, exp: Regex) -> Self
+    where
+        F: ToString,
+    {
+        Self {
+            this: BuilderNodeType::Exp {
+                field: field.to_string(),
+                value: exp,
+            },
+            left: None,
+            right: None,
+        }
+    }
+
+    /*
+    fn set_right_child(&mut self, node: BuilderNodeType) {
+        // TODO: check if it's possible to only compile these assertions during tests
+        assert!(!self.this.is_leaf(), "Setting a right child to a leaf node");
+        assert!(
+            self.right.is_some(),
+            "Setting a right child to a node that it already has a right child"
+        );
+
+        self.right = Some(Rc::new(node));
+    }
+    */
+
+    /*
+    fn extract_right_child(&mut self) -> Option<Rc<RefCell<BuilderNode>>> {
+        self.right.take()
+    }
+    */
+
+    fn set_left(&mut self, child: Rc<RefCell<BuilderNode>>) {
+        self.left = Some(child);
+    }
+
+    fn set_right(&mut self, child: Rc<RefCell<BuilderNode>>) {
+        self.right = Some(child);
+    }
+
+    fn set_expression_as_right_child<F>(&mut self, field: F, exp: Regex)
+    where
+        F: ToString,
+    {
+        // TODO: check if it's possible to only compile these assertions during tests
+        assert!(
+            !self.this.is_leaf(),
+            "BUG: Setting a right child to a leaf node"
+        );
+        assert!(
+            self.right.is_none(),
+            "BUG: Setting a right child to a node that it already has a right child"
+        );
+
+        self.right = Some(Rc::new(RefCell::new(BuilderNode::new_leaf(field, exp))));
+    }
+}
+
+#[derive(Debug)]
+enum BuilderNodeType {
+    And,
+    Or,
+    Exp { field: String, value: Regex },
+}
+
+impl BuilderNodeType {
+    fn is_leaf(&self) -> bool {
+        match self {
+            BuilderNodeType::And | BuilderNodeType::Or => false,
+            BuilderNodeType::Exp { field: _, value: _ } => true,
+        }
+    }
+}
+
+/*
 impl Node {
     fn new_emtpy_and() -> Self {
         Node::And {
@@ -253,7 +326,9 @@ impl Node {
     }
     */
 }
+*/
 
+/*
 /// Set `child` to `parent`'s right.
 ///
 /// This method helps to detect bugs of `Builder` implementation through panics, so it assumes that
@@ -307,6 +382,7 @@ fn set_left_child(mut parent: Node, child: Node) -> Node {
 
     parent
 }
+*/
 
 #[cfg(test)]
 mod test {
@@ -338,8 +414,25 @@ mod test {
             .regex("foo", bar)
             .and()
             .regex("foo2", bar2)
-            .and()
+            .or()
             .regex("foo2", bar3)
+            .end();
+    }
+
+    #[test]
+    fn build_filter_with_num_conds_4() {
+        let bar = Regex::new("bar").expect("valid regex");
+        let bar2 = Regex::new("bar2").expect("valid regex");
+        let bar3 = Regex::new("bar3").expect("valid regex");
+        let bar4 = Regex::new("bar4").expect("valid regex");
+        let _ = Builder::new()
+            .regex("foo", bar)
+            .or()
+            .regex("foo2", bar2)
+            .and()
+            .regex("foo3", bar3)
+            .or()
+            .regex("foo4", bar4)
             .end();
     }
 
