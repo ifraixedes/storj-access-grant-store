@@ -26,9 +26,9 @@ enum Node {
 pub struct Builder {
     // TODO: Try using a OnceCell.
     /// points to the root node of the tree.
-    root: Option<Rc<RefCell<BuilderNode>>>,
+    root: Option<Rc<OnceCell<BuilderNode>>>,
     /// points to the last non-leaf node added to the tree.
-    pointer: Option<Rc<RefCell<BuilderNode>>>,
+    pointer: Option<Rc<OnceCell<BuilderNode>>>,
 }
 
 impl Builder {
@@ -62,10 +62,12 @@ impl Builder {
             // TODO: I don't understand why I have to call `as_ref()`, otherwise, it doesn't
             // compile while the following code works
             // https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=009a905385dc51c0d172fca9cecdade5
-            let mut node = pointer.as_ref().borrow_mut();
+            let mut node = pointer.as_ref().get_mut().expect("TODO");
             node.set_expression_as_right_child(field, exp);
         } else {
-            self.root = Some(Rc::new(RefCell::new(BuilderNode::new_leaf(field, exp))));
+            let root = OnceCell::new();
+            root.set(BuilderNode::new_leaf(field, exp)).expect("TODO");
+            self.root = Some(Rc::new(root));
         }
 
         Connector { builder: self }
@@ -118,17 +120,18 @@ impl Connector {
         if let Some(ref pointer) = self.builder.pointer {
             // This case is adding a new condition to the filter which is building, so the new
             // non-leaf node (in this case an AND operator) has to be added to the right.
-            let and = Rc::new(RefCell::new(BuilderNode {
+            let and = OnceCell::new();
+            and.set(BuilderNode {
                 this: op,
                 left: None,
                 right: None,
-            }));
-
-            let right = pointer.as_ref().borrow_mut().right.replace(Rc::clone(&and)).expect(
+            });
+            let and = Rc::new(and);
+            let right = pointer.as_ref().get_mut().expect("TODO").right.replace(Rc::clone(&and)).expect(
                 "BUG: Builder::pointer must have a right child when Connector::and method is called",
             );
 
-            and.as_ref().borrow_mut().set_left(right);
+            and.as_ref().get_mut().expect("TODO").set_left(right);
             self.builder.pointer = Some(and);
         } else {
             // This case happens only when the first non-leaf node (in this case an AND operator) is
@@ -138,11 +141,13 @@ impl Connector {
                 .builder
                 .root
                 .expect("BUG: Builder::root cannot be `None` when Connector::and method is called");
-            self.builder.pointer = Some(Rc::new(RefCell::new(BuilderNode {
+            let non_leaf = OnceCell::new();
+            non_leaf.set(BuilderNode {
                 this: op,
                 left: Some(Rc::clone(&root)),
                 right: None,
-            })));
+            });
+            self.builder.pointer = Some(Rc::new(non_leaf));
             self.builder.root = Some(Rc::clone(&root));
         }
 
@@ -153,8 +158,8 @@ impl Connector {
 #[derive(Debug)]
 struct BuilderNode {
     this: BuilderNodeType,
-    left: Option<Rc<RefCell<BuilderNode>>>,
-    right: Option<Rc<RefCell<BuilderNode>>>,
+    left: Option<Rc<OnceCell<BuilderNode>>>,
+    right: Option<Rc<OnceCell<BuilderNode>>>,
     /*
     this: Rc<BuilderNodeType>,
     left: Option<Rc<BuilderNode>>,
@@ -201,11 +206,11 @@ impl BuilderNode {
     }
     */
 
-    fn set_left(&mut self, child: Rc<RefCell<BuilderNode>>) {
+    fn set_left(&mut self, child: Rc<OnceCell<BuilderNode>>) {
         self.left = Some(child);
     }
 
-    fn set_right(&mut self, child: Rc<RefCell<BuilderNode>>) {
+    fn set_right(&mut self, child: Rc<OnceCell<BuilderNode>>) {
         self.right = Some(child);
     }
 
@@ -223,7 +228,9 @@ impl BuilderNode {
             "BUG: Setting a right child to a node that it already has a right child"
         );
 
-        self.right = Some(Rc::new(RefCell::new(BuilderNode::new_leaf(field, exp))));
+        let right = OnceCell::new();
+        right.set(BuilderNode::new_leaf(field, exp));
+        self.right = Some(Rc::new(right));
     }
 }
 
