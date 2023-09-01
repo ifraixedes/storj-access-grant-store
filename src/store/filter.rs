@@ -40,8 +40,10 @@ impl Builder {
         }
     }
 
-    /// Nests a filter into the current position of the filter that this instances is building.
-    pub fn nest(self, filter: Filter) -> Connector {
+    // TODO: Implement it in the future.
+    // Nests a filter into the current position of the filter that this instances is building.
+    // This should be as a parentheses expression, for example: A OR (B AND C).
+    fn _nest(self, filter: Filter) -> Connector {
         todo!();
     }
 
@@ -71,16 +73,57 @@ impl Builder {
         Connector { builder: self }
     }
 
-    fn build(self) -> Filter {
+    /// build a filter from the current state of the builder. This method is called by
+    /// [`Connector::end`] because it guarantees that [`Builder`] is an appropriated state to build
+    /// a filter (i.e. It doesn't have any intermediate node without children or only one child.)
+    fn build(self) -> Option<Filter> {
+        // Drop the only Rc which has more than one reference.
         drop(self.pointer);
 
-        // TODO: has to build this method
-        Filter {
-            root: Node::Exp {
-                field: String::from("todo"),
-                value: Regex::new(".*").unwrap(),
-            },
+        let root = self.root?;
+
+        fn walk_nodes(refnode: RefCell<BuilderNode>, prev_filter: Option<&Filter>) -> Filter {
+            let node = refnode.into_inner();
+            // Because we know that this is unbalanced binary tree towards to the right, we walk until
+            // the right most leaf.
+            match node.this {
+                BuilderNodeType::And | BuilderNodeType::Or => {
+                    let right = Rc::into_inner(node.right.expect(&format!(
+                    "BUG: invalid binary tree, missing a right child. Node: {:?}",
+                    node.this,
+                )))
+                .expect("BUG: Builder::walk_nodes called with some node in the tree which has more than one strong reference. Make sure that walk_nodes is not called by any other method than Builder:build");
+                    let right = walk_nodes(right, prev_filter);
+
+                    let left = Rc::into_inner(node.left.expect(&format!(
+                    "BUG: invalid binary tree, missing a left child. Node: {:?}",
+                    node.this,
+                )))
+                .expect("BUG: Builder::walk_nodes called with some node in the tree which has more than one strong reference. Make sure that walk_nodes is not called by any other method than Builder:build");
+                    let left = walk_nodes(left, prev_filter);
+
+                    match node.this {
+                    BuilderNodeType::And => {
+                        Filter{root: Node::And{left: Box::new(left.root), right: Box::new(right.root)}}
+                    },
+                    BuilderNodeType::Or=> {
+                        Filter{root: Node::Or{left: Box::new(left.root), right: Box::new(right.root)}}
+                    },
+                    _ => unreachable!("this is the same match than parent and this match has all the values to match that parent match arm")
+                }
+                }
+                BuilderNodeType::Exp { field, value } => Filter {
+                    root: Node::Exp { field, value },
+                },
+            }
         }
+
+        Some(walk_nodes(
+            Rc::into_inner(root).expect(
+                "BUG: calling Builder::build with more than one reference to the root node",
+            ),
+            None,
+        ))
     }
 }
 
@@ -105,11 +148,12 @@ impl Connector {
     /// It returns an error if there was an error when building the filter, for example, an
     /// expression that has to be a valid regular expression isn't valid.
     pub fn end(self) -> Filter {
-        self.builder.build()
+        self.builder.build().expect("BUG: calling Connector::end with a builder which doesn't have any node. Connect must be built with Builder methods")
     }
 
+    /// Add a `op` to the builder. It panics if `op` is a leaf node, which should only happen if
+    /// there is a bug because this method should be called only by other [`Self`] methods.
     fn connect(mut self, op: BuilderNodeType) -> Builder {
-        // TODO: check if it's possible to only compile these assertions during tests
         assert!(
             !op.is_leaf(),
             "BUG: calling Connector::connect with a leaf BuilderNodeType"
@@ -150,6 +194,7 @@ impl Connector {
     }
 }
 
+/// Represents a node of the builder's tree.
 #[derive(Debug)]
 struct BuilderNode {
     this: BuilderNodeType,
@@ -172,19 +217,17 @@ impl BuilderNode {
         }
     }
 
+    /// Set a left child.
     fn set_left(&mut self, child: Rc<RefCell<BuilderNode>>) {
         self.left = Some(child);
     }
 
-    fn set_right(&mut self, child: Rc<RefCell<BuilderNode>>) {
-        self.right = Some(child);
-    }
-
+    /// Set `exp` as a right child. It panics if `self` is a leaf node or it already has a right
+    /// child.
     fn set_expression_as_right_child<F>(&mut self, field: F, exp: Regex)
     where
         F: ToString,
     {
-        // TODO: check if it's possible to only compile these assertions during tests
         assert!(
             !self.this.is_leaf(),
             "BUG: Setting a right child to a leaf node"
@@ -213,147 +256,6 @@ impl BuilderNodeType {
         }
     }
 }
-
-/*
-impl Node {
-    fn new_emtpy_and() -> Self {
-        Node::And {
-            left: Box::new(Node::Empty),
-            right: Box::new(Node::Empty),
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        if let Node::Empty = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn is_leaf(&self) -> bool {
-        match self {
-            Node::And { left: _, right: _ } | Node::Or { left: _, right: _ } => false,
-            _ => true,
-        }
-    }
-
-    fn has_children(&self) -> (bool, bool) {
-        match self {
-            Node::And { left, right } | Node::Or { left, right } => (
-                !matches!(**left, Node::Empty),
-                !matches!(**right, Node::Empty),
-            ),
-            _ => (false, false),
-        }
-    }
-
-    fn set_left_child(&mut self, child: Node) {
-        match self {
-            Node::And { left, right: _ } | Node::Or { left, right: _ } => {
-                *left = Box::new(child);
-            }
-            _ => todo!(),
-        }
-    }
-
-    fn append_and_to_left(&mut self) {
-        match self {
-            Node::And { left: _, right } | Node::Or { left: _, right } => {
-                if right.is_leaf() {
-                    let and = Node::And {
-                        right: *right,
-                        left: Box::new(Node::Empty),
-                    };
-                    *right = Box::new(and);
-                } else {
-                }
-            }
-            _ => todo!(),
-        };
-    }
-
-    /*
-    fn get_right_child(&mut self) -> Node {
-        match self {
-            Node::And { left: _, right } | Node::Or { left: _, right } => **right,
-            _ => todo!(),
-        }
-    }
-    */
-
-    /*
-    fn derive_right_child(&mut self, child: Node) {
-        match self {
-            Node::And { left: _, right } | Node::Or { left: _, right } => {
-                if right.is_leaf() {
-                    *right = Box::new(child);
-                } else {
-
-                }
-            }
-            _ => todo!(),
-        };
-    }
-    */
-}
-*/
-
-/*
-/// Set `child` to `parent`'s right.
-///
-/// This method helps to detect bugs of `Builder` implementation through panics, so it assumes that
-/// `parent` and its children, and `child` are of certain variants.
-fn set_right_child(mut parent: Node, child: Node) -> Node {
-    if let Node::Empty = child {
-        panic!("BUG: setting a `Node::Empty` as a parent's right node")
-    }
-    match &mut parent {
-        Node::And { left, right } | Node::Or { left, right } => {
-            if let Node::Empty = **left {
-                panic!("BUG: setting a right child node to a parent node of a variant `Node::And` or  `Node::Or` whose left node isn't `Node::Empty`");
-            } else if let Node::Empty = **right {
-                *right = Box::new(child);
-            } else {
-                panic!("BUG: setting a right child node to a parent node of a variant `Node::And` or  `Node::Or` whose right node isn't `Node::Empty`");
-            }
-        }
-        _ => panic!(
-            "BUG: setting a node to a parent node that isn't a variant `Node:And`, nor `Node:Or`"
-        ),
-    };
-
-    parent
-}
-
-/// Set `child` to `parent`'s left.
-///
-/// This method helps to detect bugs of `Builder` implementation through panics, so it assumes that
-/// `parent` and its children, and `child` are of certain variants.
-fn set_left_child(mut parent: Node, child: Node) -> Node {
-    if let Node::Empty = child {
-        panic!("BUG: setting a `Node::Empty` as a parent's left node")
-    }
-    match &mut parent {
-        Node::And { left, right } | Node::Or { left, right } => {
-            if let Node::Empty = **right {
-                if let Node::Empty = **left {
-                    *left = Box::new(child);
-                } else {
-                    panic!("BUG: adding a left child node to a parent node of a variant `Node::And` or  `Node::Or` whose left node isn't `Node::Empty`");
-                }
-            } else {
-                panic!("BUG: adding a left child node to a parent node of a variant `Node::And` or  `Node::Or` whose right node isn't `Node::Empty`");
-            }
-        }
-        _ => panic!(
-            "BUG: adding a node to a parent node that isn't a variant `Node:And`, nor `Node:Or`"
-        ),
-    };
-
-    parent
-}
-*/
 
 #[cfg(test)]
 mod test {
@@ -406,104 +308,4 @@ mod test {
             .regex("foo4", bar4)
             .end();
     }
-
-    /* TODO: I need first to implement Builder::build
-    #[test]
-    fn build_filter_nest_1_filter() {
-        let bar = Regex::new("bar").expect("valid regex");
-        let bar2 = Regex::new("bar2").expect("valid regex");
-        let filter_to_nest = Builder::new()
-            .regex("foo", bar)
-            .and()
-            .regex("foo2", bar2)
-            .end();
-
-        let bar = Regex::new("bar").expect("valid regex");
-        let bar2 = Regex::new("bar2").expect("valid regex");
-        let _ = Builder::new()
-            .regex("foo", bar)
-            .and()
-            .regex("foo2", bar2)
-            .end();
-    }
-    */
-
-    #[test]
-    #[ignore]
-    fn build_filter_successfully() {
-        let bar = Regex::new("bar").expect("valid regex");
-        let filter_simple = Builder::new().regex("foo", bar).end();
-
-        let bar = Regex::new("bar").expect("valid regex");
-        let bar2 = Regex::new("bar2").expect("valid regex");
-        let _filter_no_nested = Builder::new()
-            .regex("foo", bar)
-            .and()
-            .regex("foo2", bar2)
-            .end();
-
-        let bar = Regex::new("bar").expect("valid regex");
-        let bar2 = Regex::new("bar2").expect("valid regex");
-        let bar3 = Regex::new("bar3").expect("valid regex");
-        let _filter_2_ops = Builder::new()
-            .regex("foo", bar)
-            .and()
-            .regex("foo2", bar2)
-            .or()
-            .regex("foo3", bar3)
-            .end();
-
-        let bar = Regex::new("bar").expect("valid regex");
-        let _filter_nested = Builder::new()
-            .nest(filter_simple)
-            .or()
-            .regex("foo", bar)
-            .end();
-
-        let bar = Regex::new("bar").expect("valid regex");
-        let bar2 = Regex::new("bar2").expect("valid regex");
-        let bar3 = Regex::new("bar3").expect("valid regex");
-        let bar4 = Regex::new("bar3").expect("valid regex");
-        let _filter_nested_after = Builder::new()
-            .regex("foo", bar)
-            .and()
-            .regex("foo2", bar2)
-            .or()
-            .nest(
-                Builder::new()
-                    .regex("foo3", bar3)
-                    .and()
-                    .regex("foo4", bar4)
-                    .end(),
-            )
-            .end();
-    }
-
-    /*
-       #[test]
-       fn build_filter_unsuccessfully() {
-    // TODO: check errors variant
-
-    let err = Builder::new()
-            .regex("foo", "[bar")
-            .end()
-            .expect_err("one field: invalid regex");
-
-        let err = Builder::new()
-            .regex("foo", "bar")
-            .and()
-            .regex("foo2", "bar2]")
-            .end()
-            .expect_err("two fields: invalid regex second field");
-
-        let err = Builder::new()
-            .regex("foo", "bar")
-            .and()
-            .regex("foo2", "bar2")
-            .or()
-            .regex("foo3", "bar3")
-            .end()
-            .expect_err("three fields with 'and' and 'or': invalid second field");
-    }
-    */
 }
