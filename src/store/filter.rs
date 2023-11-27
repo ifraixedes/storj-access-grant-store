@@ -1,7 +1,9 @@
 //!  Types for finding access grants inside AGS content.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::vec::Vec;
 
 use regex::Regex;
 
@@ -12,7 +14,40 @@ pub struct Filter {
     root: Node,
 }
 
-impl Filter {}
+impl Filter {
+    pub fn filtrate(&self) -> Filtrate {
+        Filtrate::new(&self)
+    }
+}
+
+pub struct Filtrate<'a> {
+    filter: &'a Filter,
+    content: HashMap<String, Vec<String>>,
+}
+
+impl<'a> Filtrate<'a> {
+    fn new(f: &'a Filter) -> Self {
+        Self {
+            filter: f,
+            content: HashMap::new(),
+        }
+    }
+
+    pub fn add_field<S>(&mut self, name: S, value: S)
+    where
+        S: ToString,
+    {
+        self.content
+            .entry(name.to_string())
+            .and_modify(|values| values.push(value.to_string()))
+            .or_insert(vec![value.to_string()]);
+    }
+
+    pub fn execute(self) -> bool {
+        // TODO: continue here
+        todo!()
+    }
+}
 
 /// Represents a node of the tree representation of a filter.
 #[derive(Debug)]
@@ -307,5 +342,14 @@ mod test {
             .or()
             .regex("foo4", bar4)
             .end();
+    }
+
+    #[test]
+    fn filtrate_using_same_filter() {
+        let bar = Regex::new("bar").expect("valid regex");
+        let f = Builder::new().regex("foo", bar).end();
+
+        let _filtering1 = f.filtrate();
+        let _filtering2 = f.filtrate();
     }
 }
